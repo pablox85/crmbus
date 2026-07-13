@@ -35,12 +35,12 @@ export default function LoginPage() {
       <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-soft dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-md bg-brand-600 p-3 text-white">
-              <BusFront className="h-6 w-6" />
+            <div className="rounded-xl bg-brand-600 p-3 text-blue-500">
+              <BusFront className="h-6 w-7" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-950 dark:text-white">CRMBus</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Ingreso al control de kilometraje</p>
+              <h1 className="text-2xl font-bold text-slate-950 dark:text-white">Control de Flota</h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Login</p>
             </div>
           </div>
           <div>

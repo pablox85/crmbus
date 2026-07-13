@@ -1,4 +1,4 @@
-import type { AppUser, Bus, BusStatus, KmRecord, Role, Tenant } from "@/lib/types";
+import type { AppUser, AuditLogEntry, Bus, BusStatus, KmRecord, Role, Tenant } from "@/lib/types";
 
 export interface AuthUser {
   uid: string;
@@ -41,6 +41,12 @@ export interface KmRecordInput {
   notes?: string;
 }
 
+export interface AuditLogFilters {
+  tableName?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+}
+
 export interface AuthRepository {
   onAuthStateChanged(callback: (user: AuthUser | null) => void): () => void;
   signIn(email: string, password: string): Promise<AuthUser>;
@@ -64,4 +70,5 @@ export interface AppRepository {
   getMonthlyStats(tenantId: string, monthStart: Date): Promise<{ km: number; records: number }>;
   getTenant(tenantId: string): Promise<Tenant | null>;
   updateTenant(tenantId: string, input: Pick<Tenant, "name" | "rut" | "address" | "contactEmail">): Promise<void>;
+  listAuditLog(tenantId: string, filters?: AuditLogFilters): Promise<AuditLogEntry[]>;
 }

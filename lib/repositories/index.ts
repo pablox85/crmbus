@@ -1,7 +1,8 @@
 import { SupabaseAuthRepository, SupabaseRepository } from "@/lib/repositories/SupabaseRepository";
+import { publicEnv } from "@/lib/env";
 import type { AppRepository, AuthRepository } from "@/lib/repositories/types";
 
-const useDemoData = process.env.NEXT_PUBLIC_USE_DEMO_DATA === "true";
+const useDemoData = publicEnv.useDemoData;
 
 let appRepositoryPromise: Promise<AppRepository> | null = null;
 let authRepositoryPromise: Promise<AuthRepository> | null = null;

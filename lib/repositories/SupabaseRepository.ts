@@ -1,10 +1,12 @@
-import { supabase } from "@/lib/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { AppTimestamp } from "@/lib/datetime";
-import type { AppUser, Bus, BusStatus, KmRecord, Role, Tenant } from "@/lib/types";
+import type { AppUser, AuditAction, AuditLogEntry, Bus, BusStatus, KmRecord, Role, Tenant } from "@/lib/types";
 import type {
   AppRepository,
   AuthRepository,
   AuthUser,
+  AuditLogFilters,
   BusInput,
   KmRecordFilters,
   KmRecordInput,
@@ -61,6 +63,18 @@ interface KmRecordRow {
   notes: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface AuditLogRow {
+  id: string;
+  tenant_id: string;
+  actor_profile_id: string | null;
+  table_name: string;
+  record_id: string;
+  action: AuditAction;
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  created_at: string;
 }
 
 function toAuthUser(user: { id: string; email?: string | null }): AuthUser {
@@ -131,17 +145,33 @@ function mapKmRecord(row: KmRecordRow): KmRecord {
   };
 }
 
+function mapAuditLog(row: AuditLogRow): AuditLogEntry {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    actorProfileId: row.actor_profile_id ?? undefined,
+    tableName: row.table_name,
+    recordId: row.record_id,
+    action: row.action,
+    oldData: row.old_data ?? undefined,
+    newData: row.new_data ?? undefined,
+    createdAt: toTimestamp(row.created_at)
+  };
+}
+
 function throwIfError(error: { message: string } | null): void {
   if (error) throw new Error(error.message);
 }
 
 export class SupabaseAuthRepository implements AuthRepository {
+  private readonly supabase = createSupabaseBrowserClient();
+
   onAuthStateChanged(callback: (user: AuthUser | null) => void): () => void {
-    void supabase.auth.getSession().then(({ data }) => {
+    void this.supabase.auth.getSession().then(({ data }) => {
       callback(data.session?.user ? toAuthUser(data.session.user) : null);
     });
 
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = this.supabase.auth.onAuthStateChange((_event, session) => {
       callback(session?.user ? toAuthUser(session.user) : null);
     });
 
@@ -149,27 +179,29 @@ export class SupabaseAuthRepository implements AuthRepository {
   }
 
   async signIn(email: string, password: string): Promise<AuthUser> {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await this.supabase.auth.signInWithPassword({ email, password });
     throwIfError(error);
     if (!data.user) throw new Error("No se pudo iniciar sesión.");
     return toAuthUser(data.user);
   }
 
   async signOut(): Promise<void> {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await this.supabase.auth.signOut();
     throwIfError(error);
   }
 }
 
 export class SupabaseRepository implements AppRepository {
+  private readonly supabase: SupabaseClient = createSupabaseBrowserClient();
+
   async getUserProfile(uid: string): Promise<AppUser | null> {
-    const { data, error } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle<ProfileRow>();
+    const { data, error } = await this.supabase.from("profiles").select("*").eq("id", uid).maybeSingle<ProfileRow>();
     throwIfError(error);
     return data ? mapProfile(data) : null;
   }
 
   async listUsers(tenantId: string): Promise<AppUser[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from("profiles")
       .select("*")
       .eq("tenant_id", tenantId)
@@ -179,7 +211,7 @@ export class SupabaseRepository implements AppRepository {
   }
 
   async createUserProfile(input: UserProfileInput): Promise<void> {
-    const { error } = await supabase.from("profiles").upsert({
+    const { error } = await this.supabase.from("profiles").upsert({
       id: input.uid,
       tenant_id: input.tenantId,
       display_name: input.displayName,
@@ -191,7 +223,7 @@ export class SupabaseRepository implements AppRepository {
   }
 
   async updateUserRole(userId: string, input: { role: Role; active: boolean }): Promise<void> {
-    const { error } = await supabase
+    const { error } = await this.supabase
       .from("profiles")
       .update({ role: input.role, active: input.active })
       .eq("id", userId);
@@ -199,7 +231,7 @@ export class SupabaseRepository implements AppRepository {
   }
 
   async listBuses(tenantId: string): Promise<Bus[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from("buses")
       .select("*")
       .eq("tenant_id", tenantId)
@@ -209,7 +241,7 @@ export class SupabaseRepository implements AppRepository {
   }
 
   async createBus(tenantId: string, input: BusInput): Promise<string> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from("buses")
       .insert({
         tenant_id: tenantId,
@@ -233,7 +265,7 @@ export class SupabaseRepository implements AppRepository {
     tenantId: string,
     input: Partial<Omit<Bus, "id" | "tenantId" | "createdAt" | "updatedAt">>
   ): Promise<void> {
-    const { error } = await supabase
+    const { error } = await this.supabase
       .from("buses")
       .update({
         internal_number: input.internalNumber,
@@ -250,7 +282,7 @@ export class SupabaseRepository implements AppRepository {
   }
 
   async listKmRecords(user: AppUser, filters: KmRecordFilters = {}): Promise<KmRecord[]> {
-    let request = supabase
+    let request = this.supabase
       .from("km_records")
       .select("*")
       .eq("tenant_id", user.tenantId)
@@ -271,7 +303,7 @@ export class SupabaseRepository implements AppRepository {
     const totalKm = input.endKm - input.startKm;
     if (totalKm < 0) throw new Error("El kilometraje final debe ser mayor o igual al inicial.");
 
-    const { data, error } = await supabase.rpc("create_km_record", {
+    const { data, error } = await this.supabase.rpc("create_km_record", {
       p_bus_id: input.busId,
       p_record_date: input.date.toISOString(),
       p_start_km: input.startKm,
@@ -284,7 +316,7 @@ export class SupabaseRepository implements AppRepository {
   }
 
   async getMonthlyStats(tenantId: string, monthStart: Date): Promise<{ km: number; records: number }> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from("km_records")
       .select("total_km")
       .eq("tenant_id", tenantId)
@@ -301,13 +333,13 @@ export class SupabaseRepository implements AppRepository {
   }
 
   async getTenant(tenantId: string): Promise<Tenant | null> {
-    const { data, error } = await supabase.from("tenants").select("*").eq("id", tenantId).maybeSingle<TenantRow>();
+    const { data, error } = await this.supabase.from("tenants").select("*").eq("id", tenantId).maybeSingle<TenantRow>();
     throwIfError(error);
     return data ? mapTenant(data) : null;
   }
 
   async updateTenant(tenantId: string, input: Pick<Tenant, "name" | "rut" | "address" | "contactEmail">): Promise<void> {
-    const { error } = await supabase
+    const { error } = await this.supabase
       .from("tenants")
       .update({
         name: input.name,
@@ -317,5 +349,22 @@ export class SupabaseRepository implements AppRepository {
       })
       .eq("id", tenantId);
     throwIfError(error);
+  }
+
+  async listAuditLog(tenantId: string, filters: AuditLogFilters = {}): Promise<AuditLogEntry[]> {
+    let request = this.supabase
+      .from("audit_log")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    if (filters.tableName) request = request.eq("table_name", filters.tableName);
+    if (filters.dateFrom) request = request.gte("created_at", filters.dateFrom.toISOString());
+    if (filters.dateTo) request = request.lte("created_at", filters.dateTo.toISOString());
+
+    const { data, error } = await request;
+    throwIfError(error);
+    return ((data ?? []) as AuditLogRow[]).map(mapAuditLog);
   }
 }

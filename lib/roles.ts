@@ -11,12 +11,13 @@ export const roleLabels: Record<Role, string> = {
 const permissions: Record<string, readonly Role[]> = {
   dashboard: ["admin", "supervisor", "readonly", "demo"],
   busesRead: ["admin", "supervisor", "readonly", "demo"],
-  busesWrite: ["admin", "demo"],
+  busesWrite: ["admin", "supervisor", "demo"],
   kmCreate: ["admin", "supervisor", "driver", "demo"],
   kmHistory: ["admin", "supervisor", "readonly", "demo"],
   ownKmHistory: ["driver"],
-  users: ["admin", "demo"],
-  settings: ["admin", "demo"]
+  users: ["admin", "supervisor", "demo"],
+  settings: ["admin", "supervisor", "demo"],
+  audit: ["admin", "supervisor"]
 };
 
 export type Permission = keyof typeof permissions;
@@ -33,5 +34,6 @@ export function canAccessPath(role: Role | undefined, path: string): boolean {
   if (path.startsWith("/historial")) return can(role, "kmHistory") || can(role, "ownKmHistory");
   if (path.startsWith("/usuarios")) return can(role, "users");
   if (path.startsWith("/configuracion")) return can(role, "settings");
+  if (path.startsWith("/auditoria")) return can(role, "audit");
   return true;
 }

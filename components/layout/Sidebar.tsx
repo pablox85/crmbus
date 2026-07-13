@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  ScrollText,
   Settings,
   Users
 } from "lucide-react";
@@ -25,6 +26,7 @@ const items = [
   { href: "/registro-km", label: "Registro de kilómetros", icon: Gauge, permission: "kmCreate" },
   { href: "/historial", label: "Historial", icon: History, permission: "kmHistory" },
   { href: "/usuarios", label: "Usuarios", icon: Users, permission: "users" },
+  { href: "/auditoria", label: "Auditoría", icon: ScrollText, permission: "audit" },
   { href: "/configuracion", label: "Configuración", icon: Settings, permission: "settings" }
 ] as const;
 

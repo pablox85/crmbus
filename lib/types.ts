@@ -56,6 +56,20 @@ export interface KmRecord {
   updatedAt: AppTimestamp;
 }
 
+export type AuditAction = "insert" | "update" | "delete";
+
+export interface AuditLogEntry {
+  id: string;
+  tenantId: string;
+  actorProfileId?: string;
+  tableName: string;
+  recordId: string;
+  action: AuditAction;
+  oldData?: Record<string, unknown>;
+  newData?: Record<string, unknown>;
+  createdAt: AppTimestamp;
+}
+
 export interface TenantScoped {
   tenantId: string;
 }
