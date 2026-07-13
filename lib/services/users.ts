@@ -16,6 +16,21 @@ export async function createUserProfile(input: UserProfileInput): Promise<void> 
 }
 
 export async function updateUserRole(userId: string, input: { role: Role; active: boolean }): Promise<void> {
+  if (!publicEnv.useDemoData) {
+    const response = await fetch(`/api/users/${userId}/role`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    });
+
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(body?.error ?? "No se pudo actualizar el rol del usuario.");
+    }
+
+    return;
+  }
+
   return (await getAppRepository()).updateUserRole(userId, input);
 }
 

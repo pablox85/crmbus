@@ -82,7 +82,17 @@ function loadState(): DemoState {
     saveState(initial);
     return initial;
   }
-  return hydrateTimestamp(JSON.parse(raw)) as DemoState;
+  const stored = hydrateTimestamp(JSON.parse(raw)) as Partial<DemoState>;
+  const state: DemoState = {
+    tenants: stored.tenants ?? [],
+    users: stored.users ?? [],
+    buses: stored.buses ?? [],
+    kmRecords: stored.kmRecords ?? [],
+    auditLogs: stored.auditLogs ?? [],
+    futureEntities: stored.futureEntities ?? {}
+  };
+  saveState(state);
+  return state;
 }
 
 function saveState(state: DemoState): void {

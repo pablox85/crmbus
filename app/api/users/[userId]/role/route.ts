@@ -6,11 +6,9 @@ import { z } from "zod";
 import { publicEnv } from "@/lib/env";
 import type { Role } from "@/lib/types";
 
-const inviteSchema = z.object({
-  tenantId: z.string().uuid(),
-  email: z.string().email(),
-  displayName: z.string().min(1),
-  role: z.enum(["admin", "supervisor", "driver", "readonly", "demo"])
+const roleUpdateSchema = z.object({
+  role: z.enum(["admin", "supervisor", "driver", "readonly", "demo"]),
+  active: z.boolean()
 });
 
 function getSupabaseSecretKey(): string {
@@ -23,21 +21,26 @@ function jsonError(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
 }
 
-function canInviteRole(actorRole: Role, invitedRole: Role): boolean {
+function canManageRoleChange(actorRole: Role, currentTargetRole: Role, nextTargetRole: Role): boolean {
   if (actorRole === "admin") return true;
-  if (actorRole === "supervisor") return invitedRole === "driver" || invitedRole === "readonly";
-  return false;
+  if (actorRole !== "supervisor") return false;
+
+  return (
+    (currentTargetRole === "driver" || currentTargetRole === "readonly") &&
+    (nextTargetRole === "driver" || nextTargetRole === "readonly")
+  );
 }
 
-export async function POST(request: Request) {
+export async function PATCH(request: Request, context: { params: Promise<{ userId: string }> }) {
   if (publicEnv.useDemoData) {
-    return jsonError("La invitación por Supabase no aplica en modo demo.", 400);
+    return jsonError("La actualización server-side de roles no aplica en modo demo.", 400);
   }
 
+  const { userId } = await context.params;
   const body = await request.json().catch(() => null);
-  const parsed = inviteSchema.safeParse(body);
+  const parsed = roleUpdateSchema.safeParse(body);
   if (!parsed.success) {
-    return jsonError("Datos de invitación inválidos.", 400);
+    return jsonError("Datos de rol inválidos.", 400);
   }
 
   const cookieStore = await cookies();
@@ -61,18 +64,14 @@ export async function POST(request: Request) {
     return jsonError("No autenticado.", 401);
   }
 
-  const { data: profile, error: profileError } = await supabase
+  const { data: actorProfile, error: actorProfileError } = await supabase
     .from("profiles")
     .select("tenant_id, role, active")
     .eq("id", user.id)
     .maybeSingle<{ tenant_id: string; role: Role; active: boolean }>();
 
-  if (profileError || !profile?.active) {
+  if (actorProfileError || !actorProfile?.active) {
     return jsonError("Perfil inválido.", 403);
-  }
-
-  if (profile.tenant_id !== parsed.data.tenantId || !canInviteRole(profile.role, parsed.data.role)) {
-    return jsonError("No autorizado.", 403);
   }
 
   const admin = createClient(publicEnv.supabaseUrl, getSupabaseSecretKey(), {
@@ -82,31 +81,35 @@ export async function POST(request: Request) {
     }
   });
 
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(parsed.data.email, {
-    data: {
-      tenant_id: parsed.data.tenantId,
-      display_name: parsed.data.displayName,
-      role: parsed.data.role
-    }
-  });
+  const { data: targetProfile, error: targetProfileError } = await admin
+    .from("profiles")
+    .select("tenant_id, role")
+    .eq("id", userId)
+    .maybeSingle<{ tenant_id: string; role: Role }>();
 
-  if (error) {
-    return jsonError(error.message, 400);
+  if (targetProfileError) {
+    return jsonError(targetProfileError.message, 400);
   }
 
-  if (data.user) {
-    const { error: profileUpsertError } = await admin.from("profiles").upsert({
-      id: data.user.id,
-      tenant_id: parsed.data.tenantId,
-      display_name: parsed.data.displayName,
-      email: parsed.data.email,
-      role: parsed.data.role,
-      active: true
-    });
+  if (!targetProfile || targetProfile.tenant_id !== actorProfile.tenant_id) {
+    return jsonError("Usuario no encontrado en este tenant.", 404);
+  }
 
-    if (profileUpsertError) {
-      return jsonError(profileUpsertError.message, 400);
-    }
+  if (!canManageRoleChange(actorProfile.role, targetProfile.role, parsed.data.role)) {
+    return jsonError("No autorizado para asignar ese rol.", 403);
+  }
+
+  const { error: updateError } = await admin
+    .from("profiles")
+    .update({
+      role: parsed.data.role,
+      active: parsed.data.active
+    })
+    .eq("id", userId)
+    .eq("tenant_id", actorProfile.tenant_id);
+
+  if (updateError) {
+    return jsonError(updateError.message, 400);
   }
 
   return NextResponse.json({ ok: true });
