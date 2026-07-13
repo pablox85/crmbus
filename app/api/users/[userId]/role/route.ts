@@ -1,5 +1,4 @@
 import { createServerClient } from "@supabase/ssr";
-import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -10,12 +9,6 @@ const roleUpdateSchema = z.object({
   role: z.enum(["admin", "supervisor", "driver", "readonly", "demo"]),
   active: z.boolean()
 });
-
-function getSupabaseSecretKey(): string {
-  const key = process.env.SUPABASE_SECRET_KEY?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if (!key) throw new Error("Falta SUPABASE_SECRET_KEY o SUPABASE_SERVICE_ROLE_KEY.");
-  return key;
-}
 
 function jsonError(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
@@ -74,14 +67,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ userI
     return jsonError("Perfil inválido.", 403);
   }
 
-  const admin = createClient(publicEnv.supabaseUrl, getSupabaseSecretKey(), {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  });
-
-  const { data: targetProfile, error: targetProfileError } = await admin
+  const { data: targetProfile, error: targetProfileError } = await supabase
     .from("profiles")
     .select("tenant_id, role")
     .eq("id", userId)
@@ -99,7 +85,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ userI
     return jsonError("No autorizado para asignar ese rol.", 403);
   }
 
-  const { error: updateError } = await admin
+  const { error: updateError } = await supabase
     .from("profiles")
     .update({
       role: parsed.data.role,

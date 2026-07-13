@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, SelectField } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { roleLabels } from "@/lib/roles";
-import { createUserProfile, inviteUser, listUsers, updateUserRole } from "@/lib/services/users";
+import { createManualUser, inviteUser, listUsers, updateUserRole } from "@/lib/services/users";
 import type { AppUser, Role } from "@/lib/types";
 
 interface InviteForm {
@@ -18,9 +18,9 @@ interface InviteForm {
 }
 
 interface ManualUserForm {
-  uid: string;
   displayName: string;
   email: string;
+  password: string;
   role: Role;
 }
 
@@ -79,6 +79,8 @@ export default function UsersPage() {
         await updateUserRole(item.id, { role: item.role, active: item.active });
         setMessage(`Permisos actualizados para ${item.displayName}.`);
         await reload();
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "No se pudieron actualizar los permisos.");
       } finally {
         setSavingUserId("");
       }
@@ -151,19 +153,27 @@ export default function UsersPage() {
   const onInviteSubmit = inviteForm.handleSubmit(async (values) => {
     if (!user) return;
     setMessage("");
-    await inviteUser(user.tenantId, values.email, values.displayName, values.role);
-    setMessage("Invitación enviada. El perfil se creará automáticamente cuando la persona acepte.");
-    inviteForm.reset({ displayName: "", email: "", role: "driver" });
-    await reload();
+    try {
+      await inviteUser(user.tenantId, values.email, values.displayName, values.role);
+      setMessage("Invitación enviada y perfil creado/actualizado en la base de datos.");
+      inviteForm.reset({ displayName: "", email: "", role: "driver" });
+      await reload();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo invitar al usuario.");
+    }
   });
 
   const onManualSubmit = manualForm.handleSubmit(async (values) => {
     if (!user) return;
     setMessage("");
-    await createUserProfile({ tenantId: user.tenantId, ...values, active: true });
-    setMessage("Perfil creado manualmente.");
-    manualForm.reset({ uid: "", displayName: "", email: "", role: "driver" });
-    await reload();
+    try {
+      await createManualUser({ tenantId: user.tenantId, ...values });
+      setMessage("Usuario creado manualmente con contraseña y perfil en la base de datos.");
+      manualForm.reset({ displayName: "", email: "", password: "", role: "driver" });
+      await reload();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo crear el usuario manual.");
+    }
   });
 
   return (
@@ -186,9 +196,15 @@ export default function UsersPage() {
       <details className="mb-8 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <summary className="cursor-pointer text-sm font-semibold text-slate-700 dark:text-slate-200">Alta Manual</summary>
         <form className="mt-4 grid gap-4 md:grid-cols-5" onSubmit={onManualSubmit}>
-          <Field label="Id Interna" required {...manualForm.register("uid", { required: true })} />
           <Field label="Nombre" required {...manualForm.register("displayName", { required: true })} />
           <Field label="Email" type="email" required {...manualForm.register("email", { required: true })} />
+          <Field
+            label="Contraseña"
+            type="password"
+            autoComplete="new-password"
+            required
+            {...manualForm.register("password", { required: true, minLength: 8 })}
+          />
           <SelectField label="Rol" {...manualForm.register("role")}>
             {assignableRoles.map((option) => (
               <option key={option.value} value={option.value}>
