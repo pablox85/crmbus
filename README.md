@@ -35,10 +35,8 @@ Con `NEXT_PUBLIC_USE_DEMO_DATA=true`, la app usa `src/demo/seed.ts` y persiste c
 Usuarios demo:
 
 ```txt
-admin@demo.local / admin123
-supervisor@demo.local / supervisor123
-chofer@demo.local / chofer123
-lectura@demo.local / lectura123
+Usuario: admin@demo.local 
+Contraseña: admin123
 ```
 
 Para resetear los datos demo al seed:
